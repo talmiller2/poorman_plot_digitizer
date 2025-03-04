@@ -1,10 +1,9 @@
-# import matplotlib
-# matplotlib.use('TkAgg')  # Use TkAgg backend for better window management on macOS
+
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 import numpy as np
 import pandas as pd
-import tkinter as tk  # For screen size fallback
+import tkinter as tk
 
 # Global variable to store sampled data
 sampled_data = {}
@@ -13,27 +12,22 @@ sampled_data = {}
 def load_and_display_image(image_path):
     """Load and display the image with a zoom panel, maximizing figure size."""
     img = mpimg.imread(image_path)
-    # Get screen size as a fallback
     root = tk.Tk()
     screen_width = root.winfo_screenwidth()
     screen_height = root.winfo_screenheight()
     root.destroy()
 
-    # Create figure with a large initial size based on screen dimensions
     dpi = plt.rcParams['figure.dpi']
     fig = plt.figure(figsize=(screen_width / dpi * 0.95, screen_height / dpi * 0.95))
-
-    # Attempt to maximize the window
     manager = plt.get_current_fig_manager()
     try:
-        manager.window.showMaximized()  # Preferred method for TkAgg
+        manager.window.showMaximized()
     except AttributeError:
         try:
-            manager.window.state('zoomed')  # Alternative for some Tk backends
+            manager.window.state('zoomed')
         except AttributeError:
-            pass  # Fallback to large initial size if maximization fails
+            pass
 
-    # Define axes with relative positions
     ax = fig.add_axes([0.05, 0.05, 0.55, 0.9])
     ax.imshow(img)
     ax.set_xticks([])
@@ -81,52 +75,76 @@ def digitize_figure(fig, ax, zoom_ax, img, zoom_size, save_csv=True, save_txt=Tr
     text = ax.text(0.05, 0.95, "Click X-axis point 1:", transform=ax.transAxes,
                    color='white', bbox=dict(facecolor='black', alpha=0.8))
 
-    def on_mouse_move(event):
+    def update_zoom_panel(x, y):
+        """Update the zoom panel centered on the given coordinates."""
         nonlocal zoom_size
-        if event.inaxes == ax and event.xdata and event.ydata:
-            x, y = int(event.xdata), int(event.ydata)
-            x_min, x_max = max(0, x - zoom_size // 2), min(img.shape[1], x + zoom_size // 2)
-            y_min, y_max = max(0, y - zoom_size // 2), min(img.shape[0], y + zoom_size // 2)
-            if x_max <= x_min or y_max <= y_min:
-                zoom_ax.set_visible(False)
-            else:
-                zoom_ax.set_visible(True)
-                zoom_ax.clear()
-                zoom_ax.imshow(img[y_min:y_max, x_min:x_max])
-                zoom_ax.axvline(x=(x_max - x_min) / 2, color='grey', linewidth=0.5)
-                zoom_ax.axhline(y=(y_max - y_min) / 2, color='grey', linewidth=0.5)
-                for ds_name, (_, pixel_points) in all_data.items():
-                    ds_idx = int(ds_name.split('_')[1]) - 1
-                    color_idx = ds_idx % len(color_list)
-                    marker_idx = ds_idx // len(color_list) % len(marker_list)
-                    color = color_list[color_idx]
-                    marker = marker_list[marker_idx]
-                    for px, py in pixel_points:
-                        if x_min - 0.5 <= px <= x_max + 0.5 and y_min - 0.5 <= py <= y_max + 0.5:
-                            zoom_x = px - x_min
-                            zoom_y = py - y_min
-                            zoom_ax.plot(zoom_x, zoom_y, color=color, marker=marker, markersize=5,
-                                         markeredgecolor='black', markeredgewidth=1)
-                if current_points and sampling_mode:
-                    color_idx = (dataset_num - 1) % len(color_list)
-                    marker_idx = (dataset_num - 1) // len(color_list) % len(marker_list)
-                    color = color_list[color_idx]
-                    marker = marker_list[marker_idx]
-                    for px, py in current_points:
-                        if x_min - 0.5 <= px <= x_max + 0.5 and y_min - 0.5 <= py <= y_max + 0.5:
-                            zoom_x = px - x_min
-                            zoom_y = py - y_min
-                            zoom_ax.plot(zoom_x, zoom_y, color=color, marker=marker, markersize=5,
-                                         markeredgecolor='black', markeredgewidth=1)
-                for i, (px, py) in enumerate(calib_points):
+        half_size = zoom_size // 2
+
+        x_min = max(0, x - half_size)
+        x_max = min(img.shape[1], x + half_size)
+        if x_min == 0:
+            x_max = min(img.shape[1], zoom_size)
+        elif x_max == img.shape[1]:
+            x_min = max(0, img.shape[1] - zoom_size)
+
+        y_min = max(0, y - half_size)
+        y_max = min(img.shape[0], y + half_size)
+        if y_min == 0:
+            y_max = min(img.shape[0], zoom_size)
+        elif y_max == img.shape[0]:
+            y_min = max(0, img.shape[0] - zoom_size)
+
+        if x_max <= x_min or y_max <= y_min:
+            zoom_ax.set_visible(False)
+        else:
+            zoom_ax.set_visible(True)
+            zoom_ax.clear()
+            zoom_ax.imshow(img[y_min:y_max, x_min:x_max])
+            zoom_x_center = x - x_min
+            zoom_y_center = y - y_min
+            zoom_ax.axvline(x=zoom_x_center, color='grey', linewidth=0.5)
+            zoom_ax.axhline(y=zoom_y_center, color='grey', linewidth=0.5)
+
+            for ds_name, (_, pixel_points) in all_data.items():
+                ds_idx = int(ds_name.split('_')[1]) - 1
+                color_idx = ds_idx % len(color_list)
+                marker_idx = ds_idx // len(color_list) % len(marker_list)
+                color = color_list[color_idx]
+                marker = marker_list[marker_idx]
+                for px, py in pixel_points:
                     if x_min - 0.5 <= px <= x_max + 0.5 and y_min - 0.5 <= py <= y_max + 0.5:
                         zoom_x = px - x_min
                         zoom_y = py - y_min
-                        color = 'blue' if i < 2 else 'red'
-                        zoom_ax.plot(zoom_x, zoom_y, color=color, marker='*', markersize=10, markeredgecolor='black',
+                        zoom_ax.plot(zoom_x, zoom_y, color=color, marker=marker, markersize=5, markeredgecolor='black',
                                      markeredgewidth=1)
-                zoom_ax.axis('off')
-            fig.canvas.draw_idle()
+
+            if current_points and sampling_mode:
+                color_idx = (dataset_num - 1) % len(color_list)
+                marker_idx = (dataset_num - 1) // len(color_list) % len(marker_list)
+                color = color_list[color_idx]
+                marker = marker_list[marker_idx]
+                for px, py in current_points:
+                    if x_min - 0.5 <= px <= x_max + 0.5 and y_min - 0.5 <= py <= y_max + 0.5:
+                        zoom_x = px - x_min
+                        zoom_y = py - y_min
+                        zoom_ax.plot(zoom_x, zoom_y, color=color, marker=marker, markersize=5, markeredgecolor='black',
+                                     markeredgewidth=1)
+
+            for i, (px, py) in enumerate(calib_points):
+                if x_min - 0.5 <= px <= x_max + 0.5 and y_min - 0.5 <= py <= y_max + 0.5:
+                    zoom_x = px - x_min
+                    zoom_y = py - y_min
+                    color = 'blue' if i < 2 else 'red'
+                    zoom_ax.plot(zoom_x, zoom_y, color=color, marker='*', markersize=10, markeredgecolor='black',
+                                 markeredgewidth=1)
+
+            zoom_ax.axis('off')
+        fig.canvas.draw_idle()
+
+    def on_mouse_move(event):
+        if event.inaxes == ax and event.xdata and event.ydata:
+            x, y = int(event.xdata), int(event.ydata)
+            update_zoom_panel(x, y)
 
     def on_scroll(event):
         nonlocal zoom_size
@@ -135,10 +153,9 @@ def digitize_figure(fig, ax, zoom_ax, img, zoom_size, save_csv=True, save_txt=Tr
                 zoom_size = max(50, zoom_size - 10)
             elif event.button == 'down':
                 zoom_size = min(300, zoom_size + 10)
-            on_mouse_move(event)
-
-    fig.canvas.mpl_connect('scroll_event', on_scroll)
-    fig.canvas.mpl_connect('motion_notify_event', on_mouse_move)
+            if event.xdata and event.ydata:
+                x, y = int(event.xdata), int(event.ydata)
+                update_zoom_panel(x, y)
 
     def on_click(event):
         nonlocal calib_state, calib_points, calib_markers, current_points, markers, sampling_mode
@@ -155,7 +172,7 @@ def digitize_figure(fig, ax, zoom_ax, img, zoom_size, save_csv=True, save_txt=Tr
             else:
                 text.set_text(f"Enter value for Y-axis point {(calib_state - 4) // 2 + 1}: ")
             calib_state += 1
-            fig.canvas.draw_idle()
+            update_zoom_panel(int(px), int(py))  # Update zoom panel on click
         elif sampling_mode:
             px, py = event.xdata, event.ydata
             current_points.append((px, py))
@@ -166,7 +183,7 @@ def digitize_figure(fig, ax, zoom_ax, img, zoom_size, save_csv=True, save_txt=Tr
             marker_plot = \
             ax.plot(px, py, color=color, marker=marker, markersize=5, markeredgecolor='black', markeredgewidth=1)[0]
             markers.append(marker_plot)
-            fig.canvas.draw_idle()
+            update_zoom_panel(int(px), int(py))  # Update zoom panel on click
 
     def on_key(event):
         nonlocal calib_state, calib_points, calib_markers, current_value, calib_values, sampling_mode, current_points, markers, dataset_num, all_data
@@ -239,6 +256,8 @@ def digitize_figure(fig, ax, zoom_ax, img, zoom_size, save_csv=True, save_txt=Tr
                     save_to_csv({k: v[0] for k, v in all_data.items()})
                 fig.canvas.draw_idle()
 
+    fig.canvas.mpl_connect('motion_notify_event', on_mouse_move)
+    fig.canvas.mpl_connect('scroll_event', on_scroll)
     fig.canvas.mpl_connect('button_press_event', on_click)
     fig.canvas.mpl_connect('key_press_event', on_key)
     return all_data
@@ -273,4 +292,4 @@ def main(image_path=None, save_csv=True, save_txt=True):
 
 
 if __name__ == "__main__":
-    sampled_data = main(save_csv=True, save_txt=True)  # Prompt for path if not provided
+    sampled_data = main(save_csv=True, save_txt=True)
