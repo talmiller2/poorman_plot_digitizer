@@ -167,10 +167,15 @@ def digitize_figure(fig, ax, zoom_ax, img, zoom_size, save_csv=True, save_txt=Tr
             marker = ax.plot(px, py, 'b*' if calib_state < 4 else 'r*', markersize=10, markeredgecolor='black',
                              markeredgewidth=1)[0]
             calib_markers.append(marker)
-            if calib_state < 2:
-                text.set_text(f"Enter value for X-axis point {(calib_state // 2) + 1}: ")
-            else:
-                text.set_text(f"Enter value for Y-axis point {(calib_state - 4) // 2 + 1}: ")
+            # Fixed text display logic
+            if calib_state == 0:
+                text.set_text("Enter value for X-axis point 1: ")
+            elif calib_state == 2:
+                text.set_text("Enter value for X-axis point 2: ")
+            elif calib_state == 4:
+                text.set_text("Enter value for Y-axis point 1: ")
+            elif calib_state == 6:
+                text.set_text("Enter value for Y-axis point 2: ")
             calib_state += 1
             update_zoom_panel(int(px), int(py))
         elif sampling_mode:
@@ -181,7 +186,7 @@ def digitize_figure(fig, ax, zoom_ax, img, zoom_size, save_csv=True, save_txt=Tr
             color = color_list[color_idx]
             marker = marker_list[marker_idx]
             marker_plot = \
-            ax.plot(px, py, color=color, marker=marker, markersize=5, markeredgecolor='black', markeredgewidth=1)[0]
+                ax.plot(px, py, color=color, marker=marker, markersize=5, markeredgecolor='black', markeredgewidth=1)[0]
             markers.append(marker_plot)
             update_zoom_panel(int(px), int(py))
 
