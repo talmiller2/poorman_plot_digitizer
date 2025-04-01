@@ -3,9 +3,20 @@ import matplotlib.image as mpimg
 import numpy as np
 import pandas as pd
 import tkinter as tk
+import os
 
 # Global variable to store sampled data
 sampled_data = {}
+
+
+def get_unique_filename(base_name, extension):
+    """Generate a unique filename by appending _vN if file exists."""
+    counter = 2
+    new_name = base_name
+    while os.path.exists(f"{new_name}.csv") or any(os.path.exists(f"{new_name}_{i}.txt") for i in range(1, counter)):
+        new_name = f"{base_name}_v{counter}"
+        counter += 1
+    return new_name
 
 
 def load_and_display_image(image_path):
@@ -54,9 +65,13 @@ def save_set_to_txt(dataset, filename):
     print(f"Saved {filename}")
 
 
-def digitize_figure(fig, ax, zoom_ax, img, zoom_size, save_csv=True, save_txt=True):
+def digitize_figure(fig, ax, zoom_ax, img, zoom_size, save_csv=True, save_txt=True, file_name="dataset"):
     """Handle calibration and sampling with undo and fine adjustments."""
     global sampled_data
+
+    # Get unique filename if files exist
+    file_name = get_unique_filename(file_name, ".csv")
+
     calib_state = 0
     calib_points = []
     calib_values = [None, None, None, None]
@@ -70,7 +85,7 @@ def digitize_figure(fig, ax, zoom_ax, img, zoom_size, save_csv=True, save_txt=Tr
     color_list = ["red", "green", "blue", "cyan", "magenta", "yellow", "black", "orange", "purple", "brown", "pink",
                   "gray"]
     marker_list = ['o', 's', '^', 'v', 'D', '*']
-    move_step = 1  # Pixel step size for arrow key adjustments
+    move_step = 1
 
     text = ax.text(0.05, 0.95, "Click X-axis point 1:", transform=ax.transAxes,
                    color='white', bbox=dict(facecolor='black', alpha=0.8))
@@ -167,7 +182,6 @@ def digitize_figure(fig, ax, zoom_ax, img, zoom_size, save_csv=True, save_txt=Tr
             marker = ax.plot(px, py, 'b*' if calib_state < 4 else 'r*', markersize=10, markeredgecolor='black',
                              markeredgewidth=1)[0]
             calib_markers.append(marker)
-            # Fixed text display logic
             if calib_state == 0:
                 text.set_text("Enter value for X-axis point 1: ")
             elif calib_state == 2:
@@ -186,14 +200,14 @@ def digitize_figure(fig, ax, zoom_ax, img, zoom_size, save_csv=True, save_txt=Tr
             color = color_list[color_idx]
             marker = marker_list[marker_idx]
             marker_plot = \
-                ax.plot(px, py, color=color, marker=marker, markersize=5, markeredgecolor='black', markeredgewidth=1)[0]
+            ax.plot(px, py, color=color, marker=marker, markersize=5, markeredgecolor='black', markeredgewidth=1)[0]
             markers.append(marker_plot)
             update_zoom_panel(int(px), int(py))
 
     def on_key(event):
         nonlocal calib_state, calib_points, calib_markers, current_value, calib_values, sampling_mode, current_points, markers, dataset_num, all_data
         if not sampling_mode and calib_state < 8:
-            if calib_state in [1, 3, 5, 7]:  # Value entry states
+            if calib_state in [1, 3, 5, 7]:
                 if event.key.isdigit() or event.key in ['.', '-']:
                     current_value.append(event.key)
                     text.set_text(text.get_text() + event.key)
@@ -233,7 +247,6 @@ def digitize_figure(fig, ax, zoom_ax, img, zoom_size, save_csv=True, save_txt=Tr
                     if calib_points:
                         update_zoom_panel(int(calib_points[-1][0]), int(calib_points[-1][1]))
                 elif event.key in ['up', 'down', 'left', 'right'] and calib_points:
-                    # Move the last calibration point with arrow keys
                     px, py = calib_points[-1]
                     if event.key == 'up':
                         py = max(0, py - move_step)
@@ -249,7 +262,7 @@ def digitize_figure(fig, ax, zoom_ax, img, zoom_size, save_csv=True, save_txt=Tr
                     last_marker.set_data([px], [py])
                     fig.canvas.draw_idle()
                     update_zoom_panel(int(px), int(py))
-            elif event.key == 'backspace' and calib_points:  # Click states
+            elif event.key == 'backspace' and calib_points:
                 calib_points.pop()
                 calib_markers.pop().remove()
                 calib_state = max(0, calib_state - 2)
@@ -261,7 +274,6 @@ def digitize_figure(fig, ax, zoom_ax, img, zoom_size, save_csv=True, save_txt=Tr
                 if calib_points:
                     update_zoom_panel(int(calib_points[-1][0]), int(calib_points[-1][1]))
             elif event.key in ['up', 'down', 'left', 'right'] and calib_points:
-                # Move the last calibration point with arrow keys in click state
                 px, py = calib_points[-1]
                 if event.key == 'up':
                     py = max(0, py - move_step)
@@ -291,14 +303,14 @@ def digitize_figure(fig, ax, zoom_ax, img, zoom_size, save_csv=True, save_txt=Tr
                                                             img.shape) for px, py in current_points])
                 all_data[f"dataset_{dataset_num}"] = (calibrated_points, current_points.copy())
                 if save_txt:
-                    save_set_to_txt(all_data[f"dataset_{dataset_num}"], f"dataset_{dataset_num}.txt")
+                    save_set_to_txt(all_data[f"dataset_{dataset_num}"], f"{file_name}_{dataset_num}.txt")
                 dataset_num += 1
                 current_points = []
                 markers = []
                 text.set_text(f"Sampling Data Set {dataset_num}: Click to sample, Backspace to undo, Enter to finish.")
                 sampled_data.update({k: v[0] for k, v in all_data.items()})
                 if save_csv:
-                    save_to_csv({k: v[0] for k, v in all_data.items()})
+                    save_to_csv({k: v[0] for k, v in all_data.items()}, f"{file_name}.csv")
                 fig.canvas.draw_idle()
             elif event.key in ['up', 'down', 'left', 'right'] and current_points:
                 px, py = current_points[-1]
@@ -324,7 +336,7 @@ def digitize_figure(fig, ax, zoom_ax, img, zoom_size, save_csv=True, save_txt=Tr
     return all_data
 
 
-def save_to_csv(all_data, filename="sampled_data.csv"):
+def save_to_csv(all_data, filename="dataset.csv"):
     """Save all data to a single CSV file using calibrated coordinates."""
     if not all_data:
         return
@@ -340,13 +352,13 @@ def save_to_csv(all_data, filename="sampled_data.csv"):
     print(f"All data saved to {filename}")
 
 
-def main(image_path=None, save_csv=True, save_txt=True):
-    """Main function with optional image path parameter."""
+def main(image_path=None, save_csv=True, save_txt=True, file_name="dataset"):
+    """Main function with optional parameters."""
     global sampled_data
     if image_path is None:
         image_path = input("Please enter the path to the image file: ")
     fig, ax, zoom_ax, img, zoom_size = load_and_display_image(image_path)
-    all_data = digitize_figure(fig, ax, zoom_ax, img, zoom_size, save_csv, save_txt)
+    all_data = digitize_figure(fig, ax, zoom_ax, img, zoom_size, save_csv, save_txt, file_name)
     sampled_data.update({k: v[0] for k, v in all_data.items()})
     plt.show()
     return sampled_data
