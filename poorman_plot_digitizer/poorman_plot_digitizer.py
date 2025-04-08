@@ -8,7 +8,6 @@ import os
 # Global variable to store sampled data
 sampled_data = {}
 
-
 def get_unique_filename(base_name, extension):
     """Generate a unique filename by appending _vN if file exists."""
     counter = 2
@@ -17,7 +16,6 @@ def get_unique_filename(base_name, extension):
         new_name = f"{base_name}_v{counter}"
         counter += 1
     return new_name
-
 
 def load_and_display_image(image_path):
     """Load and display the image with a zoom panel, maximizing figure size."""
@@ -47,15 +45,19 @@ def load_and_display_image(image_path):
     zoom_size = 150
     return fig, ax, zoom_ax, img, zoom_size
 
-
-def pixel_to_data(pixel_x, pixel_y, calib_values, pixel_calib, img_shape):
-    """Convert pixel coordinates to calibrated data coordinates."""
+def pixel_to_data(pixel_x, pixel_y, calib_values, pixel_calib, img_shape, x_scale, y_scale):
+    """Convert pixel coordinates to calibrated data coordinates based on axis scales."""
     x_min, x_max, y_min, y_max = calib_values
     x1, x2, y1_pix, y2_pix = pixel_calib
-    x = x_min + (pixel_x - x1) * (x_max - x_min) / (x2 - x1)
-    y = y_min - (pixel_y - y1_pix) * (y_max - y_min) / (y1_pix - y2_pix)
-    return x, y
 
+    # Calculate mapped values (actual for linear, exponent for logarithmic)
+    mapped_x = x_min + (pixel_x - x1) * (x_max - x_min) / (x2 - x1)
+    mapped_y = y_min - (pixel_y - y1_pix) * (y_max - y_min) / (y1_pix - y2_pix)
+
+    x = mapped_x if x_scale == 'linear' else 10 ** mapped_x
+    y = mapped_y if y_scale == 'linear' else 10 ** mapped_y
+
+    return x, y
 
 def save_set_to_txt(dataset, filename):
     """Save a single dataset to a TXT file with two columns (x, y) using calibrated coordinates."""
@@ -64,7 +66,6 @@ def save_set_to_txt(dataset, filename):
             f.write(f"{x} {y}\n")
     print(f"Saved {filename}")
 
-
 def digitize_figure(fig, ax, zoom_ax, img, zoom_size, save_csv=True, save_txt=True, file_name="dataset"):
     """Handle calibration and sampling with undo and fine adjustments."""
     global sampled_data
@@ -72,7 +73,11 @@ def digitize_figure(fig, ax, zoom_ax, img, zoom_size, save_csv=True, save_txt=Tr
     # Get unique filename if files exist
     file_name = get_unique_filename(file_name, ".csv")
 
-    calib_state = 0
+    # Initialize variables, starting with scale selection
+    calib_state = -2  # Start with x-axis scale question
+    x_scale = None
+    y_scale = None
+    scale_input = ''
     calib_points = []
     calib_values = [None, None, None, None]
     calib_markers = []
@@ -82,13 +87,12 @@ def digitize_figure(fig, ax, zoom_ax, img, zoom_size, save_csv=True, save_txt=Tr
     current_points = []
     markers = []
     sampling_mode = False
-    color_list = ["red", "green", "blue", "cyan", "magenta", "yellow", "black", "orange", "purple", "brown", "pink",
-                  "gray"]
+    color_list = ["red", "green", "blue", "cyan", "magenta", "yellow", "black", "orange", "purple", "brown", "pink", "gray"]
     marker_list = ['o', 's', '^', 'v', 'D', '*']
     move_step = 1
 
-    text = ax.text(0.05, 0.95, "Click X-axis point 1:", transform=ax.transAxes,
-                   color='white', bbox=dict(facecolor='black', alpha=0.8))
+    text = ax.text(0.05, 0.95, "Is the X-axis linear (0) or logarithmic (1)? Press 0 or 1, then Enter.",
+                   transform=ax.transAxes, color='white', bbox=dict(facecolor='black', alpha=0.8))
 
     def update_zoom_panel(x, y):
         """Update the zoom panel centered on the given coordinates."""
@@ -128,10 +132,8 @@ def digitize_figure(fig, ax, zoom_ax, img, zoom_size, save_csv=True, save_txt=Tr
                 marker = marker_list[marker_idx]
                 for px, py in pixel_points:
                     if x_min - 0.5 <= px <= x_max + 0.5 and y_min - 0.5 <= py <= y_max + 0.5:
-                        zoom_x = px - x_min
-                        zoom_y = py - y_min
-                        zoom_ax.plot(zoom_x, zoom_y, color=color, marker=marker, markersize=5, markeredgecolor='black',
-                                     markeredgewidth=1)
+                        zoom_ax.plot(px - x_min, py - y_min, color=color, marker=marker, markersize=5,
+                                     markeredgecolor='black', markeredgewidth=1)
 
             if current_points and sampling_mode:
                 color_idx = (dataset_num - 1) % len(color_list)
@@ -140,41 +142,32 @@ def digitize_figure(fig, ax, zoom_ax, img, zoom_size, save_csv=True, save_txt=Tr
                 marker = marker_list[marker_idx]
                 for px, py in current_points:
                     if x_min - 0.5 <= px <= x_max + 0.5 and y_min - 0.5 <= py <= y_max + 0.5:
-                        zoom_x = px - x_min
-                        zoom_y = py - y_min
-                        zoom_ax.plot(zoom_x, zoom_y, color=color, marker=marker, markersize=5, markeredgecolor='black',
-                                     markeredgewidth=1)
+                        zoom_ax.plot(px - x_min, py - y_min, color=color, marker=marker, markersize=5,
+                                     markeredgecolor='black', markeredgewidth=1)
 
             for i, (px, py) in enumerate(calib_points):
                 if x_min - 0.5 <= px <= x_max + 0.5 and y_min - 0.5 <= py <= y_max + 0.5:
-                    zoom_x = px - x_min
-                    zoom_y = py - y_min
                     color = 'blue' if i < 2 else 'red'
-                    zoom_ax.plot(zoom_x, zoom_y, color=color, marker='*', markersize=10, markeredgecolor='black',
-                                 markeredgewidth=1)
+                    zoom_ax.plot(px - x_min, py - y_min, color=color, marker='*', markersize=10,
+                                 markeredgecolor='black', markeredgewidth=1)
 
             zoom_ax.axis('off')
         fig.canvas.draw_idle()
 
     def on_mouse_move(event):
         if event.inaxes == ax and event.xdata and event.ydata:
-            x, y = int(event.xdata), int(event.ydata)
-            update_zoom_panel(x, y)
+            update_zoom_panel(int(event.xdata), int(event.ydata))
 
     def on_scroll(event):
         nonlocal zoom_size
         if event.inaxes == ax:
-            if event.button == 'up':
-                zoom_size = max(50, zoom_size - 10)
-            elif event.button == 'down':
-                zoom_size = min(300, zoom_size + 10)
+            zoom_size = max(50, zoom_size - 10) if event.button == 'up' else min(300, zoom_size + 10)
             if event.xdata and event.ydata:
-                x, y = int(event.xdata), int(event.ydata)
-                update_zoom_panel(x, y)
+                update_zoom_panel(int(event.xdata), int(event.ydata))
 
     def on_click(event):
         nonlocal calib_state, calib_points, calib_markers, current_points, markers, sampling_mode
-        if event.inaxes != ax or event.button != 1:
+        if event.inaxes != ax or event.button != 1 or calib_state < 0:
             return
         if not sampling_mode and calib_state in [0, 2, 4, 6]:
             px, py = event.xdata, event.ydata
@@ -197,29 +190,76 @@ def digitize_figure(fig, ax, zoom_ax, img, zoom_size, save_csv=True, save_txt=Tr
             current_points.append((px, py))
             color_idx = (dataset_num - 1) % len(color_list)
             marker_idx = (dataset_num - 1) // len(color_list) % len(marker_list)
-            color = color_list[color_idx]
-            marker = marker_list[marker_idx]
-            marker_plot = \
-            ax.plot(px, py, color=color, marker=marker, markersize=5, markeredgecolor='black', markeredgewidth=1)[0]
+            marker_plot = ax.plot(px, py, color=color_list[color_idx], marker=marker_list[marker_idx], markersize=5,
+                                  markeredgecolor='black', markeredgewidth=1)[0]
             markers.append(marker_plot)
             update_zoom_panel(int(px), int(py))
 
     def on_key(event):
-        nonlocal calib_state, calib_points, calib_markers, current_value, calib_values, sampling_mode, current_points, markers, dataset_num, all_data
+        nonlocal calib_state, x_scale, y_scale, scale_input, calib_points, calib_markers, current_value, calib_values, sampling_mode, current_points, markers, dataset_num, all_data
+
+        # Handle x-axis scale input
+        if calib_state == -2:
+            if event.key in ['0', '1']:
+                scale_input = event.key
+                text.set_text(f"Is the X-axis linear (0) or logarithmic (1)? Current: {scale_input}")
+            elif event.key == 'backspace':
+                scale_input = ''
+                text.set_text("Is the X-axis linear (0) or logarithmic (1)? ")
+            elif event.key == 'enter':
+                if scale_input == '0':
+                    x_scale = 'linear'
+                    calib_state = -1
+                    scale_input = ''
+                    text.set_text("Is the Y-axis linear (0) or logarithmic (1)? Press 0 or 1, then Enter.")
+                elif scale_input == '1':
+                    x_scale = 'logarithmic'
+                    calib_state = -1
+                    scale_input = ''
+                    text.set_text("Is the Y-axis linear (0) or logarithmic (1)? Press 0 or 1, then Enter.")
+                else:
+                    text.set_text("Invalid input. Press 0 or 1, then Enter.")
+                    scale_input = ''
+            fig.canvas.draw_idle()
+            return
+
+        # Handle y-axis scale input
+        if calib_state == -1:
+            if event.key in ['0', '1']:
+                scale_input = event.key
+                text.set_text(f"Is the Y-axis linear (0) or logarithmic (1)? Current: {scale_input}")
+            elif event.key == 'backspace':
+                scale_input = ''
+                text.set_text("Is the Y-axis linear (0) or logarithmic (1)? ")
+            elif event.key == 'enter':
+                if scale_input == '0':
+                    y_scale = 'linear'
+                    calib_state = 0
+                    scale_input = ''
+                    text.set_text("Click X-axis point 1:")
+                elif scale_input == '1':
+                    y_scale = 'logarithmic'
+                    calib_state = 0
+                    scale_input = ''
+                    text.set_text("Click X-axis point 1:")
+                else:
+                    text.set_text("Invalid input. Press 0 or 1, then Enter.")
+                    scale_input = ''
+            fig.canvas.draw_idle()
+            return
+
+        # Calibration phase
         if not sampling_mode and calib_state < 8:
             if calib_state in [1, 3, 5, 7]:
                 if event.key.isdigit() or event.key in ['.', '-']:
                     current_value.append(event.key)
                     text.set_text(text.get_text() + event.key)
-                    fig.canvas.draw_idle()
                 elif event.key == 'enter' and current_value:
-                    value = float(''.join(current_value))
-                    calib_values[calib_state // 2] = value
+                    calib_values[calib_state // 2] = float(''.join(current_value))
                     current_value = []
                     if calib_state == 7:
                         sampling_mode = True
-                        text.set_text(
-                            f"Sampling Data Set {dataset_num}: Click to sample, Backspace to undo, Enter to finish.")
+                        text.set_text(f"Sampling Data Set {dataset_num}: Click to sample, Backspace to undo, Enter to finish.")
                         fig.text(0.65, 0.80,
                                  f"Calibration: Xmin={calib_values[0]}, Xmax={calib_values[1]}, Ymin={calib_values[2]}, Ymax={calib_values[3]}",
                                  color='white', fontsize=10, bbox=dict(facecolor='black', alpha=0.8))
@@ -228,8 +268,7 @@ def digitize_figure(fig, ax, zoom_ax, img, zoom_size, save_csv=True, save_txt=Tr
                         if calib_state < 4:
                             text.set_text(f"Click X-axis point {(calib_state // 2) + 1}:")
                         else:
-                            text.set_text(f"Click Y-axis point {(calib_state - 4) // 2 + 1}:")
-                    fig.canvas.draw_idle()
+                            text.set_text(f"Click Y-axis point {((calib_state - 4) // 2) + 1}:")
                 elif event.key == 'backspace':
                     if current_value:
                         current_value.pop()
@@ -242,10 +281,7 @@ def digitize_figure(fig, ax, zoom_ax, img, zoom_size, save_csv=True, save_txt=Tr
                         if calib_state < 4:
                             text.set_text(f"Click X-axis point {(calib_state // 2) + 1}:")
                         else:
-                            text.set_text(f"Click Y-axis point {(calib_state - 4) // 2 + 1}:")
-                    fig.canvas.draw_idle()
-                    if calib_points:
-                        update_zoom_panel(int(calib_points[-1][0]), int(calib_points[-1][1]))
+                            text.set_text(f"Click Y-axis point {((calib_state - 4) // 2) + 1}:")
                 elif event.key in ['up', 'down', 'left', 'right'] and calib_points:
                     px, py = calib_points[-1]
                     if event.key == 'up':
@@ -256,12 +292,10 @@ def digitize_figure(fig, ax, zoom_ax, img, zoom_size, save_csv=True, save_txt=Tr
                         px = max(0, px - move_step)
                     elif event.key == 'right':
                         px = min(img.shape[1] - 1, px + move_step)
-
                     calib_points[-1] = (px, py)
-                    last_marker = calib_markers[-1]
-                    last_marker.set_data([px], [py])
-                    fig.canvas.draw_idle()
+                    calib_markers[-1].set_data([px], [py])
                     update_zoom_panel(int(px), int(py))
+                fig.canvas.draw_idle()
             elif event.key == 'backspace' and calib_points:
                 calib_points.pop()
                 calib_markers.pop().remove()
@@ -269,7 +303,7 @@ def digitize_figure(fig, ax, zoom_ax, img, zoom_size, save_csv=True, save_txt=Tr
                 if calib_state < 4:
                     text.set_text(f"Click X-axis point {(calib_state // 2) + 1}:")
                 else:
-                    text.set_text(f"Click Y-axis point {(calib_state - 4) // 2 + 1}:")
+                    text.set_text(f"Click Y-axis point {((calib_state - 4) // 2) + 1}:")
                 fig.canvas.draw_idle()
                 if calib_points:
                     update_zoom_panel(int(calib_points[-1][0]), int(calib_points[-1][1]))
@@ -283,12 +317,12 @@ def digitize_figure(fig, ax, zoom_ax, img, zoom_size, save_csv=True, save_txt=Tr
                     px = max(0, px - move_step)
                 elif event.key == 'right':
                     px = min(img.shape[1] - 1, px + move_step)
-
                 calib_points[-1] = (px, py)
-                last_marker = calib_markers[-1]
-                last_marker.set_data([px], [py])
-                fig.canvas.draw_idle()
+                calib_markers[-1].set_data([px], [py])
                 update_zoom_panel(int(px), int(py))
+                fig.canvas.draw_idle()
+
+        # Sampling phase
         elif sampling_mode:
             if event.key == 'backspace' and current_points:
                 current_points.pop()
@@ -298,9 +332,10 @@ def digitize_figure(fig, ax, zoom_ax, img, zoom_size, save_csv=True, save_txt=Tr
                     update_zoom_panel(int(current_points[-1][0]), int(current_points[-1][1]))
             elif event.key == 'enter' and current_points:
                 calibrated_points = np.array([pixel_to_data(px, py, calib_values,
-                                                            [calib_points[0][0], calib_points[1][0], calib_points[2][1],
-                                                             calib_points[3][1]],
-                                                            img.shape) for px, py in current_points])
+                                                            [calib_points[0][0], calib_points[1][0],
+                                                             calib_points[2][1], calib_points[3][1]],
+                                                            img.shape, x_scale, y_scale)
+                                              for px, py in current_points])
                 all_data[f"dataset_{dataset_num}"] = (calibrated_points, current_points.copy())
                 if save_txt:
                     save_set_to_txt(all_data[f"dataset_{dataset_num}"], f"{file_name}_{dataset_num}.txt")
@@ -322,19 +357,16 @@ def digitize_figure(fig, ax, zoom_ax, img, zoom_size, save_csv=True, save_txt=Tr
                     px = max(0, px - move_step)
                 elif event.key == 'right':
                     px = min(img.shape[1] - 1, px + move_step)
-
                 current_points[-1] = (px, py)
-                last_marker = markers[-1]
-                last_marker.set_data([px], [py])
-                fig.canvas.draw_idle()
+                markers[-1].set_data([px], [py])
                 update_zoom_panel(int(px), int(py))
+                fig.canvas.draw_idle()
 
     fig.canvas.mpl_connect('motion_notify_event', on_mouse_move)
     fig.canvas.mpl_connect('scroll_event', on_scroll)
     fig.canvas.mpl_connect('button_press_event', on_click)
     fig.canvas.mpl_connect('key_press_event', on_key)
     return all_data
-
 
 def save_to_csv(all_data, filename="dataset.csv"):
     """Save all data to a single CSV file using calibrated coordinates."""
@@ -351,7 +383,6 @@ def save_to_csv(all_data, filename="dataset.csv"):
     df.to_csv(filename, index=False)
     print(f"All data saved to {filename}")
 
-
 def main(image_path=None, save_csv=True, save_txt=True, file_name="dataset"):
     """Main function with optional parameters."""
     global sampled_data
@@ -362,7 +393,6 @@ def main(image_path=None, save_csv=True, save_txt=True, file_name="dataset"):
     sampled_data.update({k: v[0] for k, v in all_data.items()})
     plt.show()
     return sampled_data
-
 
 if __name__ == "__main__":
     sampled_data = main(save_csv=True, save_txt=True)
